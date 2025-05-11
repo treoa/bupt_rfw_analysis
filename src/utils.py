@@ -20,7 +20,13 @@ def get_race_paths():
     Returns:
         dict: Dictionary with race names as keys and paths as values
     """
-    base_path = Path("images")
+    # Get current full directory
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Check if in the current dir name "BUPT" or "RFW"
+    if "BUPT" in current_dir:
+        base_path = Path("images")
+    elif "RFW" in current_dir:
+        base_path = Path("images/test/data")
     races = ["African", "Asian", "Caucasian", "Indian"]
     race_paths = {}
     
