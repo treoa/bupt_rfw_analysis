@@ -22,10 +22,10 @@ def get_race_paths():
     """
     # Get current full directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Check if in the current dir name "BUPT" or "RFW"
-    if "BUPT" in current_dir:
+    # Check if in the current dir, that is in lower case, substring "BUPT"
+    if "bupt" in str(current_dir).lower():
         base_path = Path("images")
-    elif "RFW" in current_dir:
+    elif "rfw" in str(current_dir).lower():
         base_path = Path("images/test/data")
     races = ["African", "Asian", "Caucasian", "Indian"]
     race_paths = {}
