@@ -53,7 +53,7 @@ class GenderPredictor:
                     self.detector_weights = config["detection_model_path"]
                     self.checkpoint = config['attribute_model_path']
                     # self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-                    self.device = "mps" if torch.backends.mps.is_available() and config['use_mps'] else "cpu"
+                    self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
                     self.with_persons = True,
                     self.disable_faces = False,
                     self.draw = False,
@@ -67,7 +67,7 @@ class GenderPredictor:
         self.batch_size = self.config['batch_size'] if 'batch_size' in self.config else 32
         self.max_workers = self.config['max_workers'] if 'max_workers' in self.config else 4
         # set env YOLO_VERBOSE to be false
-        os.environ["YOLO_VERBOSE"] = "false"
+
         
         self.args = Args()
         self.predictor = Predictor(self.args)
