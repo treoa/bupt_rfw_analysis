@@ -24,7 +24,7 @@ from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, T
 console = Console()
 
 try:
-    from mivolo.mivolo.predictor import Predictor
+    from mivolo.predictor import Predictor
 except ImportError:
     console.print(Panel.fit(f"[bold red] Could not import mivolo package",
                             border_style="magenta",
