@@ -13,7 +13,7 @@ from glob import glob
 from PIL import Image
 from torchvision import transforms
 
-from mivolo.mivolo.predictor import Predictor
+from mivolo.predictor import Predictor
 
 def predict_gender(img_path: str, detector_weights="weights/yolov8x_person_face.pt", checkpoint="weights/mivolo_imdb.pth.tar"):
     """
