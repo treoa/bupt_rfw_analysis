@@ -31,7 +31,6 @@ from glob import glob
 from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
-from pprint import pprint
 from datetime import datetime
 from torchvision import transforms
 from collections import defaultdict

@@ -2,7 +2,6 @@ rfw_data/
 gender_images/
 facial_analysis/
 bupt_analysis/
-MiVOLO/
 *.zip
 *.tar.gz
 */__pycache__
