@@ -55,7 +55,7 @@ from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, T
 
 try:
     from gender_predict import GenderPredictor
-    from mivolo.mivolo.predictor import Predictor
+    from mivolo.predictor import Predictor
     from visualizer import AdvancedDatasetAnalyzer as DatasetAnalyzer
 except ImportError:
     print("[yellow]Warning: mivolo package not found.[/yellow]")
