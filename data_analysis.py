@@ -76,8 +76,8 @@ DEVICE = None
 os.environ["YOLO_VERBOSE"] = "false"
 
 CONFIG = {
-    # "images_dir": "BalancedFace/images",
-    "images_dir": "/workspace/images/test/data",
+    "images_dir": "/workspace/BalancedFace/images",
+    # "images_dir": "/workspace/images/test/data",
     "detection_model_path": "weights/yolov8x_person_face.pt",
     "attribute_model_path": "weights/mivolo_imdb.pth.tar",
     "max_workers": 16,
