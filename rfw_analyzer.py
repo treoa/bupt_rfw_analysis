@@ -237,7 +237,7 @@ def main():
     df = pd.DataFrame(all_results)
     df.to_csv(CONFIG["output_csv"], index=False)
     
-    console.log(f"[bold green]Successfully saved {len(df)} results to {CONFIG["output_csv"]}[/bold green] :heavy_check_mark:")
+    console.log(f"[bold green]Successfully saved {len(df)} results to {CONFIG['output_csv']}[/bold green] :heavy_check_mark:")
     console.print("\n[bold]Preview of the first 5 results:[/bold]")
     console.print(df.head())
 
