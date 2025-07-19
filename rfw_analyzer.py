@@ -226,7 +226,7 @@ def main():
     all_results = []
     
     # Process images in batches with a progress bar
-    console.log(f"Starting batch processing with a batch size of {CONFIG["batch_size"]}...")
+    console.log(f"Starting batch processing with a batch size of {CONFIG['batch_size']}...")
     for i in tqdm(range(0, len(image_files), CONFIG["batch_size"]), desc="Processing Batches"):
         batch = image_files[i:i + CONFIG["batch_size"]]
         batch_results = process_batch(batch, model, processor, device)
