@@ -3,10 +3,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # Load the dataset
+file_name = "balancedface_results.csv"
 try:
-    df = pd.read_csv('gender_classification_results.csv')
+    df = pd.read_csv(file_name)
 except FileNotFoundError:
-    print("The file 'gender_classification_results.csv' was not found. Please make sure the file is in the correct directory.")
+    print(f"The file '{file_name}' was not found. Please make sure the file is in the correct directory.")
     exit()
 
 
