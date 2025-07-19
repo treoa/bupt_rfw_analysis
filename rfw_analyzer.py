@@ -59,7 +59,7 @@ logger.setLevel(logging.INFO)
 
 CONFIG = {
     # "images_dir": "/workspace/BalancedFace/images",
-    "images_dir": "./BalancedFace/images",
+    "images_dir": "/workspace/BalancedFace/images",
     "model_name": "prithivMLmods/Gender-Classifier-Mini",
     "max_workers": 16,
     "race_dirs": ["Asian", "Indian", "African", "Caucasian"],
