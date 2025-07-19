@@ -2,7 +2,6 @@ import os
 import gc
 import csv
 import sys
-import cv2
 import json
 import time
 import types
@@ -15,8 +14,6 @@ import logging
 import requests
 import warnings
 import argparse
-import omegaconf
-import ultralytics
 warnings.filterwarnings('ignore')
 
 import numpy as np
@@ -24,9 +21,7 @@ import pandas as pd
 import seaborn as sns
 import torch.nn as nn
 import torch.optim as optim
-import pytorch_lightning as pl
 import torch.nn.functional as F
-import onnxruntime as ort  # Added for YOLOv11 ONNX model
 
 from glob import glob
 from tqdm import tqdm
@@ -38,15 +33,11 @@ from collections import defaultdict
 from matplotlib import pyplot as plt
 from torch.utils.data import random_split
 from torch.optim.lr_scheduler import StepLR
-from sklearn.model_selection import train_test_split
 from typing import Dict, Tuple, List, Optional, Union
-from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import Dataset, DataLoader, random_split
-from sklearn.metrics import classification_report, confusion_matrix
 from torchvision.models import vit_l_32, ViT_L_32_Weights, list_models
 from transformers import AutoImageProcessor, SiglipForImageClassification
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 
 from rich import print
 from rich.panel import Panel
@@ -67,17 +58,15 @@ logger = logging.getLogger("rich")
 logger.setLevel(logging.INFO)
 
 CONFIG = {
-    "images_dir": "/workspace/BalancedFace/images",
-    # "images_dir": "/workspace/images/test/data",
-    "detection_model_path": "weights/yolov8x_person_face.pt",
-    "attribute_model_path": "weights/mivolo_imdb.pth.tar",
+    # "images_dir": "/workspace/BalancedFace/images",
+    "images_dir": "./BalancedFace/images",
+    "model_name": "prithivMLmods/Gender-Classifier-Mini",
     "max_workers": 16,
     "race_dirs": ["Asian", "Indian", "African", "Caucasian"],
-    "batch_size": 100,
+    "batch_size": 400,
     "supported_extensions": ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'],
     "skip_existing_csv": True,
-    "image_csv_path": "images.csv",
-    "identity_csv_path": "identities.csv",
+    "output_csv": "balancedface_results.csv",
     "plots_path": "plots",
     "use_mps": False,
 }
@@ -94,159 +83,165 @@ else:
     DEVICE = torch.device("cpu")
     logger.info("💻 Using CPU for processing")
 
-def setup_model(device):
+def setup_model():
     """
-    Loads the Gender-Classifier-Mini model and processor from Hugging Face.
-
-    Args:
-        device (str): The device to load the model onto ('cuda' or 'cpu').
-
+    Sets up the model, processor, and device.
     Returns:
-        tuple: A tuple containing the loaded model and processor.
+        tuple: (model, processor, device)
     """
-    print("Loading the Gender-Classifier-Mini model...")
-    model_name = "prithivMLmods/Gender-Classifier-Mini"
+    console.log("[bold cyan]Setting up the model...[/bold cyan]")
+    # Determine the device to run the model on (GPU if available, otherwise CPU)
+    console.log(f"Using device: [bold yellow]{DEVICE}[/bold yellow]")
+
     try:
-        processor = AutoImageProcessor.from_pretrained(model_name)
-        model = SiglipForImageClassification.from_pretrained(model_name)
-        model.to(device)
-        print("Model loaded successfully.")
-        return model, processor
+        # Load the processor and model from Hugging Face Hub
+        processor = AutoImageProcessor.from_pretrained(CONFIG["model_name"])
+        model = SiglipForImageClassification.from_pretrained(CONFIG["model_name"])
+        # Move the model to the selected device
+        model.to(DEVICE)
+        # Set the model to evaluation mode
+        model.eval()
+        console.log("[bold green]Model setup complete![/bold green] :rocket:")
+        return model, processor, DEVICE
     except Exception as e:
-        print(f"Error loading model: {e}")
-        print("Please ensure you have an active internet connection and the 'transformers' library is installed.")
-        return None, None
+        console.log(f"[bold red]Error setting up the model: {e}[/bold red]")
+        exit()
 
-
-
-
-
-def classify_gender_batch(image_paths, model, processor, device):
+def discover_images(data_root):
     """
-    Classifies the gender for a batch of images. [1]
-
+    Discovers all image files in the specified directory structure.
     Args:
-        image_paths (list): A list of paths to the input images.
-        model: The pre-trained classification model.
-        processor: The image processor for the model.
-        device (str): The device the model is on ('cuda' or 'cpu').
-
+        data_root (str): The path to the data directory.
     Returns:
-        list: A list of dictionaries, each containing the image path and its prediction.
+        list: A list of dictionaries, each containing image_path, race, and identity.
     """
-    batch_results = list()
-    images_to_process = list()
-    valid_paths = list()
+    console.log(f"Discovering images in [bold magenta]{data_root}[/bold magenta]...")
+    image_list = []
+    # Use Pathlib for robust path manipulation
+    root_path = Path(data_root)
+    if not root_path.is_dir():
+        console.log(f"[bold red]Error: The directory {data_root} does not exist.[/bold red]")
+        return []
 
-    # Open images and filter out any that can't be opened
-    for image_path in image_paths:
+    # Iterate through race folders
+    for race_path in root_path.iterdir():
+        if race_path.is_dir():
+            race = race_path.name
+            # Iterate through identity folders
+            for identity_path in race_path.iterdir():
+                if identity_path.is_dir():
+                    identity = identity_path.name
+                    # Find all image files in the identity folder
+                    for image_file in identity_path.glob('*.*'):
+                        if image_file.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp']:
+                            image_list.append({
+                                "image_path": str(image_file),
+                                "race": race,
+                                "identity": identity
+                            })
+    
+    console.log(f"Found [bold blue]{len(image_list)}[/bold blue] total images.")
+    return image_list
+
+def process_batch(batch_data, model, processor, device):
+    """
+    Processes a batch of images and returns the classification results.
+    Args:
+        batch_data (list): A list of dictionaries with image data.
+        model: The loaded classification model.
+        processor: The model's image processor.
+        device: The device to run inference on.
+    Returns:
+        list: A list of dictionaries with detailed results for each image.
+    """
+    batch_results = []
+    images = []
+    valid_paths = []
+
+    # Open images and collect valid ones
+    for item in batch_data:
         try:
-            img = Image.open(image_path).convert("RGB")
-            images_to_process.append(img)
-            valid_paths.append(image_path)
+            img = Image.open(item["image_path"]).convert("RGB")
+            images.append(img)
+            valid_paths.append(item)
         except Exception as e:
-            print(f"Warning: Could not open or process image {image_path}. Error: {e}")
+            # Handle cases where an image file is corrupt or unreadable
+            console.log(f"[yellow]Warning: Could not open {item['image_path']}. Skipping. Error: {e}[/yellow]")
             batch_results.append({
-                "image_path": image_path,
-                "dominant_gender": "Error",
-                "confidence": 0.0,
-                "female_confidence": 0.0,
-                "male_confidence": 0.0
+                "image_path": item["image_path"], "identity": item["identity"],
+                "race": item["race"], "conf_score": None, "gender": "Error",
+                "img_width": None, "img_height": None
             })
 
-    if not images_to_process:
+    if not images:
         return batch_results
 
-    # Process the batch of images
-    inputs = processor(images=images_to_process, return_tensors="pt").to(device)
+    # Prepare inputs for the model
+    inputs = processor(images=images, return_tensors="pt").to(device)
 
-    # Perform inference
+    # Perform inference without calculating gradients
     with torch.no_grad():
         outputs = model(**inputs)
 
-    logits = outputs.logits
-    probs = torch.nn.functional.softmax(logits, dim=1)
+    # Get probabilities and predicted labels
+    probs = torch.nn.functional.softmax(outputs.logits, dim=1)
+    conf_scores, predicted_indices = torch.max(probs, dim=1)
     
-    labels = model.config.id2label
-    
-    for i, image_path in enumerate(valid_paths):
-        # Get probabilities for the current image in the batch
-        image_probs = probs[i].cpu().tolist()
+    # Get labels from model config
+    id2label = model.config.id2label
+
+    # Process results for each image in the batch
+    for i in range(len(images)):
+        item = valid_paths[i]
+        img = images[i]
         
-        # Determine dominant gender and confidence
-        dominant_index = torch.argmax(probs[i]).item()
-        dominant_gender = labels[dominant_index]
-        confidence = image_probs[dominant_index]
+        # Get the full label (e.g., "Male ♂") and clean it
+        full_gender_label = id2label[predicted_indices[i].item()]
+        cleaned_gender_label = full_gender_label.split(' ')[0]
 
-        # Create a result dictionary
-        result = {
-            "image_path": image_path,
-            "dominant_gender": dominant_gender,
-            "confidence": round(confidence, 4),
-        }
-        # Add individual class confidences
-        for j, label in labels.items():
-            clean_label = label.lower().split(" ") + "_confidence"
-            result[clean_label] = round(image_probs[j], 4)
-            
-        batch_results.append(result)
-
+        batch_results.append({
+            "image_path": item["image_path"],
+            "identity": item["identity"],
+            "race": item["race"],
+            "conf_score": round(conf_scores[i].item(), 4),
+            "gender": cleaned_gender_label, # <-- MODIFIED VALUE USED HERE
+            "img_width": img.width,
+            "img_height": img.height,
+        })
+        
     return batch_results
 
-def main(input_dir, output_csv, batch_size=32):
+
+def main():
     """
-    Main function to orchestrate the batch classification process.
-
-    Args:
-        input_dir (str): The directory containing images to classify.
-        output_csv (str): The path to save the output CSV file.
-        batch_size (int): The number of images to process in each batch.
+    Main function to run the entire classification pipeline.
     """
-    # Check for GPU availability
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
-    # Load the model
-    model, processor = setup_model(device)
-    if model is None:
+    model, processor, device = setup_model()
+    
+    image_files = discover_images(CONFIG["images_dir"])
+    if not image_files:
+        console.log("[bold red]No images found. Exiting.[/bold red]")
         return
-
-    # Find all image files in the input directory
-    image_extensions = ["*.jpg", "*.jpeg", "*.png", "*.bmp"]
-    image_paths = list()
-    for ext in image_extensions:
-        image_paths.extend(glob.glob(os.path.join(input_dir, ext)))
-
-    if not image_paths:
-        print(f"No images found in directory: {input_dir}")
-        return
-
-    print(f"Found {len(image_paths)} images to process.")
-
-    all_results = list()
+        
+    all_results = []
+    
     # Process images in batches with a progress bar
-    for i in tqdm(range(0, len(image_paths), batch_size), desc="Processing Batches"):
-        batch_paths = image_paths[i:i + batch_size]
-        batch_results = classify_gender_batch(batch_paths, model, processor, device)
+    console.log(f"Starting batch processing with a batch size of {CONFIG["batch_size"]}...")
+    for i in tqdm(range(0, len(image_files), CONFIG["batch_size"]), desc="Processing Batches"):
+        batch = image_files[i:i + CONFIG["batch_size"]]
+        batch_results = process_batch(batch, model, processor, device)
         all_results.extend(batch_results)
 
     # Convert results to a pandas DataFrame and save to CSV
+    console.log(f"\n[bold cyan]Processing complete. Saving results to {CONFIG['output_csv']}...[/bold cyan]")
     df = pd.DataFrame(all_results)
-    df.to_csv(output_csv, index=False)
-    print(f"\nProcessing complete. Results saved to {output_csv}")
+    df.to_csv(CONFIG["output_csv"], index=False)
+    
+    console.log(f"[bold green]Successfully saved {len(df)} results to {CONFIG["output_csv"]}[/bold green] :heavy_check_mark:")
+    console.print("\n[bold]Preview of the first 5 results:[/bold]")
+    console.print(df.head())
 
 
-def main_cli():
-    
-    input_dir = "./"
-    output_csv = "./output.csv"
-    
-    # Setup command-line argument parsing
-    parser = argparse.ArgumentParser(description="Batch Gender Classification using Gender-Classifier-Mini.")
-    parser.add_argument("--input_dir", type=str, help="Directory containing the images to be classified.")
-    parser.add_argument("--output_csv", type=str, help="Path to the output CSV file to save results.")
-    parser.add_argument("--batch_size", type=int, default=32, help="Number of images to process in a single batch. Adjust based on your GPU memory.")
-    
-    args = parser.parse_args()
+if __name__ == "__main__":
+    main()
 
-    main(args.input_dir or input_dir, args.output_csv or output_csv, args.batch_size)
